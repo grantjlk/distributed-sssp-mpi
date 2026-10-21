@@ -33,13 +33,16 @@ int main(int argc, char* argv[]) {
 
     if (graph_path.empty() || part_path.empty() || algo.empty()) {
         if (rank == 0) {
-            LOG_ERROR("Usage: ngs_mpi --graph <path> --part <path> --algo <leader|dijkstra> [--source 0] [--rounds 200]");
+            LOG_ERROR("Usage: ngs_mpi --graph <path> --part <path> --algo <leader|dijkstra-baseline> [--source 0] [--rounds 200]");
         }
         MPI_Finalize();
         return 1;
     }
 
-    if (algo != "leader" && algo != "dijkstra") {
+    // "dijkstra" is kept as an alias so older commands still work
+    if (algo == "dijkstra") algo = "dijkstra-baseline";
+
+    if (algo != "leader" && algo != "dijkstra-baseline") {
         if (rank == 0) {
             LOG_ERROR("Unknown algorithm '" << algo << "'");
         }
@@ -130,7 +133,7 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    else if (algo == "dijkstra") {
+    else if (algo == "dijkstra-baseline") {
     std::vector<int> dist = run_dijkstra(g, p, source, rank, size, metrics);
     if (rank == 0) {
         print_metrics("Dijkstra", metrics);
