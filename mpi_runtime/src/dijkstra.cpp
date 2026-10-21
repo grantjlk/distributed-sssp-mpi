@@ -29,65 +29,44 @@ std::vector<int> run_dijkstra(
     metrics.bytes_sent    = 0;
     metrics.iterations    = 0;
 
+    // only scan the nodes this rank owns when looking for the local minimum
+    std::vector<int> owned = get_owned_nodes(p, rank);
+
+    // (distance, node id) pair for MPI_MINLOC
+    struct DistNode { int dist; int node; };
+
     for (int iter = 0; iter < num_nodes; iter++) {
         metrics.iterations++;
 
         // each rank finds its local best unsettled node
-        int local_best_dist = INF;
-        int local_best_node = -1;
-
-        for (int i = 0; i < num_nodes; i++) {
-            if (p.ownership[i] == rank && !settled[i] && dist[i] < local_best_dist) {
-                local_best_dist = dist[i];
-                local_best_node = i;
+        DistNode local_best = {INF, -1};
+        for (int i : owned) {
+            if (!settled[i] && dist[i] < local_best.dist) {
+                local_best = {dist[i], i};
             }
         }
 
-        // find global minimum distance across all ranks
-        int global_best_dist = INF;
-        //checked mpi all reduce call
-        int rc1 = MPI_Allreduce(
-            &local_best_dist,
-            &global_best_dist,
+        // one MINLOC reduction gives every rank both the global min distance
+        // and the node that has it (ties go to the smaller node id)
+        DistNode global_best;
+        // checked mpi all reduce call
+        int rc = MPI_Allreduce(
+            &local_best,
+            &global_best,
             1,
-            MPI_INT,
-            MPI_MIN,
+            MPI_2INT,
+            MPI_MINLOC,
             MPI_COMM_WORLD
         );
-        if (rc1 != MPI_SUCCESS) MPI_Abort(MPI_COMM_WORLD, rc1);
+        if (rc != MPI_SUCCESS) MPI_Abort(MPI_COMM_WORLD, rc);
 
         metrics.messages_sent += num_ranks;
-        metrics.bytes_sent    += num_ranks * sizeof(int);
+        metrics.bytes_sent    += num_ranks * sizeof(DistNode);
 
         // no more reachable unsettled nodes
-        if (global_best_dist == INF) break;
+        if (global_best.dist == INF) break;
 
-        // find which node has that distance — broadcast from owning rank
-        int global_best_node = -1;
-        if (local_best_dist == global_best_dist) {
-            global_best_node = local_best_node;
-        }
-
-        // use max reduction to find the node id
-        int reduced_best_node = -1;
-        // use checked mpi call
-        int rc2 = MPI_Allreduce(
-            &global_best_node,
-            &reduced_best_node,
-            1,
-            MPI_INT,
-            MPI_MAX,
-            MPI_COMM_WORLD
-        );
-        if (rc2 != MPI_SUCCESS) MPI_Abort(MPI_COMM_WORLD, rc2);
-        global_best_node = reduced_best_node;
-
-        metrics.messages_sent += num_ranks;
-        metrics.bytes_sent    += num_ranks * sizeof(int);
-
-        if (global_best_node == -1) break;
-
-        int u = global_best_node;
+        int u = global_best.node;
         settled[u] = true;
 
         // all ranks relax edges of u since all have full graph
