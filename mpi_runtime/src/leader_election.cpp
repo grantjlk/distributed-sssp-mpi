@@ -29,15 +29,15 @@ int run_leader_election(
     metrics.bytes_sent    = 0;
     metrics.iterations    = 0;
 
+    std::vector<int> owned = get_owned_nodes(p, rank);
+
     for (int round = 0; round < rounds; round++) {
         metrics.iterations++;
         bool changed = false;
 
         // --- local update ---
         // for each owned node, check all neighbors and update candidate
-        for (int i = 0; i < num_nodes; i++) {
-            if (p.ownership[i] != rank) continue;
-
+        for (int i : owned) {
             for (const auto& [neighbor, weight] : g.adj[i]) {
                 if (candidate[neighbor] > candidate[i]) {
                     candidate[i] = candidate[neighbor];
