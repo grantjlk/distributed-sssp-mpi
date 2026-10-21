@@ -1,9 +1,9 @@
 #include "leader_election.h"
 #include "logger.h"
+#include "timer.h"
 #include <mpi.h>
 #include <vector>
 #include <iostream>
-#include <chrono>
 #include <algorithm>
 
 int run_leader_election(
@@ -14,7 +14,8 @@ int run_leader_election(
     int rounds,
     Metrics& metrics)
 {
-    auto start = std::chrono::high_resolution_clock::now();
+    MpiTimer timer;
+    timer.start();
 
     int num_nodes = g.num_nodes;
 
@@ -98,9 +99,7 @@ int run_leader_election(
     // all nodes should agree on same leader = max node id seen
     int leader = *std::max_element(candidate.begin(), candidate.end());
 
-    auto end = std::chrono::high_resolution_clock::now();
-    metrics.runtime_seconds =
-        std::chrono::duration<double>(end - start).count();
+    metrics.runtime_seconds = timer.stop();
 
     if (rank == 0) {
         LOG_INFO("[leader] Elected leader: " << leader);

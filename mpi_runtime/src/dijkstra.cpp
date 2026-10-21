@@ -1,9 +1,9 @@
 #include "dijkstra.h"
 #include "logger.h"
+#include "timer.h"
 #include <mpi.h>
 #include <vector>
 #include <iostream>
-#include <chrono>
 #include <algorithm>
 #include <climits>
 
@@ -17,7 +17,8 @@ std::vector<int> run_dijkstra(
     int num_ranks,
     Metrics& metrics)
 {
-    auto start = std::chrono::high_resolution_clock::now();
+    MpiTimer timer;
+    timer.start();
 
     int num_nodes = g.num_nodes;
 
@@ -78,9 +79,7 @@ std::vector<int> run_dijkstra(
         }
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    metrics.runtime_seconds =
-        std::chrono::duration<double>(end - start).count();
+    metrics.runtime_seconds = timer.stop();
 
     if (rank == 0) {
         int reachable = 0;
