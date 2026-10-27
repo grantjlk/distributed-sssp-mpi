@@ -20,6 +20,12 @@ add_executable(ngs_mpi
 )
 target_link_libraries(ngs_mpi ${MPI_CXX_LIBRARIES})
 
+# synthetic graph generator (no MPI)
+add_executable(gen_graph
+    src/gen_graph.cpp
+    src/csr.cpp
+)
+
 # unit tests (no MPI)
 add_executable(unit_tests
     tests/unit_tests.cpp

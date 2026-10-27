@@ -15,3 +15,6 @@ outputs/*.ngs
 *.log
 log/
 .vscode/
+
+# Generated binary graphs (large, rebuild with gen_graph)
+*.csr
