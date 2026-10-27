@@ -4,6 +4,8 @@
 //   gen_graph --type grid --rows 1000 --cols 1000 --out grid.csr
 //
 // Common options: --max-weight W (weights are uniform in [1, W]), --seed S
+// Grid only: --shuffle randomly relabels nodes, so the runtime's block
+// partition behaves like a random partition (R-MAT is always shuffled)
 //
 // Both graph types are undirected: every edge is stored in both directions
 // with the same weight.
@@ -74,6 +76,16 @@ static CsrGraph build_csr(int64_t n, std::vector<WEdge>& edges) {
     return g;
 }
 
+// Fisher-Yates shuffle of 0..n-1
+static std::vector<int32_t> random_permutation(int64_t n, Rng& rng) {
+    std::vector<int32_t> perm(n);
+    std::iota(perm.begin(), perm.end(), 0);
+    for (int64_t i = n - 1; i > 0; i--) {
+        std::swap(perm[i], perm[rng.next() % (uint64_t)(i + 1)]);
+    }
+    return perm;
+}
+
 static CsrGraph gen_rmat(int scale, int edge_factor, int max_weight, Rng& rng) {
     // Graph500 R-MAT quadrant probabilities (d = 1 - a - b - c = 0.05)
     const double a = 0.57, b = 0.19, c = 0.19;
@@ -83,11 +95,7 @@ static CsrGraph gen_rmat(int scale, int edge_factor, int max_weight, Rng& rng) {
 
     // random relabeling so high-degree nodes aren't clustered at low ids,
     // which would overload whichever rank owns the first block
-    std::vector<int32_t> perm(n);
-    std::iota(perm.begin(), perm.end(), 0);
-    for (int64_t i = n - 1; i > 0; i--) {
-        std::swap(perm[i], perm[rng.next() % (uint64_t)(i + 1)]);
-    }
+    std::vector<int32_t> perm = random_permutation(n, rng);
 
     std::vector<WEdge> edges;
     edges.reserve(2 * samples);
@@ -118,12 +126,13 @@ static CsrGraph gen_rmat(int scale, int edge_factor, int max_weight, Rng& rng) {
     return build_csr(n, edges);
 }
 
-static CsrGraph gen_grid(int rows, int cols, int max_weight, Rng& rng) {
+static CsrGraph gen_grid(int rows, int cols, int max_weight, bool shuffle, Rng& rng) {
     int64_t n = (int64_t)rows * cols;
     std::vector<WEdge> edges;
     edges.reserve(4 * n);
 
-    // row-major ids, so a block partition gives each rank a strip of rows
+    // row-major ids, so without shuffling a block partition gives each rank
+    // a strip of rows and only the strip boundaries are cut edges
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < cols; c++) {
             int32_t u = r * cols + c;
@@ -137,6 +146,14 @@ static CsrGraph gen_grid(int rows, int cols, int max_weight, Rng& rng) {
                 edges.push_back({u, u + cols, w});
                 edges.push_back({u + cols, u, w});
             }
+        }
+    }
+
+    if (shuffle) {
+        std::vector<int32_t> perm = random_permutation(n, rng);
+        for (auto& e : edges) {
+            e.src = perm[e.src];
+            e.dst = perm[e.dst];
         }
     }
 
@@ -160,7 +177,7 @@ static void print_stats(const CsrGraph& g) {
 static void usage() {
     std::cerr << "Usage:\n"
               << "  gen_graph --type rmat --scale S [--edge-factor 16] --out FILE\n"
-              << "  gen_graph --type grid --rows R --cols C --out FILE\n"
+              << "  gen_graph --type grid --rows R --cols C [--shuffle] --out FILE\n"
               << "Options: --max-weight W (default 100), --seed S (default 1)\n";
 }
 
@@ -168,9 +185,11 @@ int main(int argc, char* argv[]) {
     std::string type, out;
     int scale = 0, edge_factor = 16, rows = 0, cols = 0, max_weight = 100;
     uint64_t seed = 1;
+    bool shuffle = false;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
+        if (arg == "--shuffle") { shuffle = true; continue; }
         if (i + 1 >= argc) { usage(); return 1; }
         if (arg == "--type")             type        = argv[++i];
         else if (arg == "--out")         out         = argv[++i];
@@ -194,7 +213,7 @@ int main(int argc, char* argv[]) {
         g = gen_rmat(scale, edge_factor, max_weight, rng);
     } else if (type == "grid") {
         if (rows < 1 || cols < 1 || (int64_t)rows * cols > INT32_MAX) { usage(); return 1; }
-        g = gen_grid(rows, cols, max_weight, rng);
+        g = gen_grid(rows, cols, max_weight, shuffle, rng);
     } else {
         usage();
         return 1;
