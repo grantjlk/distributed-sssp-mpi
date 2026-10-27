@@ -2,6 +2,8 @@
 #include <fstream>
 #include "graph.h"
 #include "partition.h"
+#include "csr.h"
+#include <cstdio>
 
 // ─── Graph Tests ───────────────────────────────────────────────────────────
 
@@ -59,6 +61,40 @@ TEST(PartitionTest, OwnedNodesCorrect) {
     // rank 0 owns nodes 0 and 4
     std::vector<int> owned = get_owned_nodes(p, 0);
     EXPECT_EQ(owned.size(), 2);
+}
+
+// ─── CSR Format Tests ───────────────────────────────────────────────────────
+
+// 0 -> {1, 2}, 1 -> {2}, 2 -> {}
+static CsrGraph tiny_csr() {
+    CsrGraph g;
+    g.num_nodes = 3;
+    g.num_edges = 3;
+    g.offsets = {0, 2, 3, 3};
+    g.targets = {1, 2, 2};
+    g.weights = {5, 9, 1};
+    return g;
+}
+
+TEST(CsrTest, RoundTrip) {
+    CsrGraph g = tiny_csr();
+    write_csr("csr_roundtrip.bin", g);
+    CsrGraph r = read_csr("csr_roundtrip.bin");
+
+    EXPECT_EQ(r.num_nodes, g.num_nodes);
+    EXPECT_EQ(r.num_edges, g.num_edges);
+    EXPECT_EQ(r.offsets, g.offsets);
+    EXPECT_EQ(r.targets, g.targets);
+    EXPECT_EQ(r.weights, g.weights);
+
+    CsrHeader h = read_csr_header("csr_roundtrip.bin");
+    EXPECT_EQ(h.num_nodes, 3);
+    EXPECT_EQ(h.num_edges, 3);
+    std::remove("csr_roundtrip.bin");
+}
+
+TEST(CsrTest, RejectsNonCsrFile) {
+    EXPECT_THROW(read_csr("tests/small_graph.json"), std::runtime_error);
 }
 
 int main(int argc, char* argv[]) {

@@ -26,6 +26,7 @@ add_executable(unit_tests
     src/graph.cpp
     src/partition.cpp
     src/metrics.cpp
+    src/csr.cpp
 )
 target_link_libraries(unit_tests ${GTEST_LIBRARIES} pthread)
 
