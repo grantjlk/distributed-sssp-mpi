@@ -8,6 +8,79 @@
 #include "leader_election.h"
 #include "dijkstra.h"
 #include "logger.h"
+#include "local_graph.h"
+#include "timer.h"
+#include <vector>
+
+static bool ends_with(const std::string& s, const std::string& suffix) {
+    return s.size() >= suffix.size() &&
+           s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+// Prints how the block partition splits the graph: per-rank node and edge
+// counts, and cut edges (edges whose target lives on another rank)
+static void print_partition_stats(const LocalGraph& lg, double load_seconds) {
+    long long stats[3] = {lg.num_owned(), lg.num_local_edges(), 0};
+    for (int32_t v : lg.targets) {
+        if (!lg.owns(v)) stats[2]++;
+    }
+
+    std::vector<long long> all(3 * lg.num_ranks);
+    MPI_Gather(stats, 3, MPI_LONG_LONG, all.data(), 3, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
+    if (lg.rank != 0) return;
+
+    long long total_cut = 0, max_edges = 0;
+    std::cout << "\n=== Partition: " << lg.num_ranks << " block(s) ===\n";
+    for (int r = 0; r < lg.num_ranks; r++) {
+        long long nodes = all[3 * r], edges = all[3 * r + 1], cut = all[3 * r + 2];
+        total_cut += cut;
+        max_edges = std::max(max_edges, edges);
+        std::cout << "  Rank " << r << ": " << nodes << " nodes, " << edges
+                  << " edges, " << cut << " cut\n";
+    }
+    double avg_edges = (double)lg.num_edges / lg.num_ranks;
+    std::cout << "  Edge cut:       " << total_cut << " / " << lg.num_edges << " ("
+              << 100.0 * total_cut / std::max<int64_t>(lg.num_edges, 1) << "%)\n"
+              << "  Edge imbalance: " << max_edges / std::max(avg_edges, 1.0)
+              << " (max rank edges / average)\n"
+              << "  Load time:      " << load_seconds << " s (slowest rank)\n"
+              << "========================\n\n";
+}
+
+// Distributed mode: each rank loads only its block of a .csr graph
+static int run_csr_mode(const std::string& graph_path, const std::string& algo,
+                        int rank, int size) {
+    if (algo != "partition-stats") {
+        if (rank == 0) {
+            LOG_ERROR("Unknown algorithm '" << algo << "' for .csr graphs (available: partition-stats)");
+        }
+        return 1;
+    }
+
+    LocalGraph lg;
+    int load_ok = 1;
+    MpiTimer timer;
+    timer.start();
+    try {
+        lg = load_graph_local(graph_path, rank, size);
+    } catch (const std::exception& ex) {
+        LOG_ERROR("Error loading graph: " << ex.what());
+        load_ok = 0;
+    }
+    double load_seconds = timer.stop();
+
+    int global_ok = 0;
+    MPI_Allreduce(&load_ok, &global_ok, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+    if (global_ok == 0) return 1;
+
+    if (rank == 0) {
+        LOG_INFO("[graph] " << graph_path << ": " << lg.num_nodes << " nodes, "
+                 << lg.num_edges << " edges across " << size << " ranks");
+    }
+
+    print_partition_stats(lg, load_seconds);
+    return 0;
+}
 
 
 int main(int argc, char* argv[]) {
@@ -31,9 +104,17 @@ int main(int argc, char* argv[]) {
         else if (arg == "--rounds" && i + 1 < argc) rounds     = std::stoi(argv[++i]);
     }
 
+    // .csr graphs are block-partitioned in-process and need no --part file
+    if (ends_with(graph_path, ".csr") && !algo.empty()) {
+        int rc = run_csr_mode(graph_path, algo, rank, size);
+        MPI_Finalize();
+        return rc;
+    }
+
     if (graph_path.empty() || part_path.empty() || algo.empty()) {
         if (rank == 0) {
             LOG_ERROR("Usage: ngs_mpi --graph <path> --part <path> --algo <leader|dijkstra-baseline> [--source 0] [--rounds 200]");
+            LOG_ERROR("       ngs_mpi --graph <file.csr> --algo partition-stats");
         }
         MPI_Finalize();
         return 1;

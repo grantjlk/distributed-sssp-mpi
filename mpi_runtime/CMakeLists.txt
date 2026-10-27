@@ -17,6 +17,8 @@ add_executable(ngs_mpi
     src/leader_election.cpp
     src/dijkstra.cpp
     src/metrics.cpp
+    src/csr.cpp
+    src/local_graph.cpp
 )
 target_link_libraries(ngs_mpi ${MPI_CXX_LIBRARIES})
 
