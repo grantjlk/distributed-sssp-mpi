@@ -1,6 +1,8 @@
 # NGS-MPI: Distributed Graph Algorithms with MPI
 
-End-to-end distributed computing pipeline that generates random graphs using NetGameSim, partitions them across MPI ranks, and runs distributed leader election and Dijkstra shortest paths using C++17 and OpenMPI.
+Distributed graph algorithms in C++17 and OpenMPI: graphs are partitioned across MPI ranks, which run leader election and single-source shortest paths.
+
+> **Work in progress:** the shortest-path code is being reworked from a replicated-graph Dijkstra baseline into distributed delta-stepping on large synthetic graphs.
 
 ---
 ## Quickstart
@@ -31,8 +33,7 @@ mpirun -n 4 ./build/ngs_mpi \
 
 ### Second Graph
 
-A second pre-generated graph is included at `outputs/graph2.json` to satisfy the
-two-graph requirement. Run it the same way:
+A second small graph is included at `outputs/graph2.json`. Run it the same way:
 
 ```bash
 python3 tools/partition/partition.py outputs/graph2.json \
@@ -49,21 +50,10 @@ mpirun -n 4 ./build/ngs_mpi --graph outputs/graph2.json \
 
 ## Reproducibility
 
-### Graph Generation
+### Small Graphs
 
-NetGameSim uses `ThreadLocalRandom`, which cannot be externally seeded.  
-As a result, graph generation is not fully reproducible, even if a seed is specified in configuration files.
-
-### Canonical Dataset
-
-To ensure consistent grading and reproducibility:
-
-- The repository includes a pre-generated graph:  
-  `outputs/graph.json`
-- This file is treated as the **canonical dataset**
-- All experiments reported in `REPORT.md` were run using this graph
-
-Graders should use this file to reproduce results without relying on NetGameSim.
+`outputs/graph.json` (501 nodes) and `outputs/graph2.json` are fixed, checked-in
+graphs. All v1 experiments in `REPORT.md` were run on `outputs/graph.json`.
 
 ### Partitioning
 
@@ -77,9 +67,7 @@ Graph partitioning **is reproducible**:
 ## Pipeline
 
 ```
-NetGameSim (Scala)
-    ↓
-Export.scala → graph.json
+graph.json
     ↓
 partition.py → part.json
     ↓
@@ -94,8 +82,6 @@ Metrics output
 
 ## Language Stack
 
-* Graph generation: Scala / SBT (NetGameSim)
-* Graph export: Scala (Export.scala)
 * Graph partitioning: Python 3
 * Core MPI runtime and algorithms: C++17 + OpenMPI
 
@@ -108,16 +94,6 @@ The distributed algorithms (leader election and Dijkstra) are implemented in C++
 Install the following on Ubuntu or WSL2:
 
 ```bash
-# Java (NetGameSim + exporter)
-sudo apt install openjdk-17-jdk
-
-# SBT
-echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" | \
-  sudo tee /etc/apt/sources.list.d/sbt.list
-curl -sL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | \
-  sudo apt-key add
-sudo apt update && sudo apt install sbt
-
 # Python
 sudo apt install python3
 
@@ -136,18 +112,13 @@ sudo apt install libgtest-dev
 ## Repository Structure
 
 ```
-NetGameSim/                 (external, cloned separately)
 tools/
-  graph_export/
-    export.sh
-    Export.scala
   partition/
     partition.py
 mpi_runtime/
   src/
   include/
   CMakeLists.txt
-configs/
 experiments/
   run_experiments.sh
 outputs/
@@ -158,30 +129,9 @@ README.md
 
 ---
 
-## Setup
-
-This project expects NetGameSim to be a sibling directory:
-
-```
-453project/
-  NetGameSim/
-  my-project/
-```
-
-Clone NetGameSim:
-
-```bash
-cd ~/453project
-git clone <netgamesim-repo-url> NetGameSim
-```
-
----
-
 ## Build
 
 ```bash
-cd ~/453project/my-project
-
 cmake -S mpi_runtime -B build
 cmake --build build
 ```
@@ -196,41 +146,7 @@ Binaries produced in `build/`:
 
 ## Running the Pipeline
 
-A pre-generated `outputs/graph.json` is included, so NetGameSim setup can be skipped.
-
-### Step 1: Generate Graph (optional)
-
-```bash
-cd ~/453project/NetGameSim
-sbt clean assembly
-
-java -Xms2G -Xmx8G -jar target/scala-3.2.2/netmodelsim.jar TestGraph
-cd ..
-```
-
-
----
-
-### Step 2: Export to JSON (optional)
-
-```bash
-cp tools/graph_export/Export.scala \
-  ~/453project/NetGameSim/src/main/scala/Export.scala
-
-cd ~/453project/NetGameSim
-sbt clean assembly
-cd ~/453project/my-project
-```
-
-```bash
-./tools/graph_export/export.sh \
-  ~/453project/NetGameSim/TestGraph.ngs \
-  outputs/graph.json
-```
-
----
-
-### Step 3: Partition the Graph
+### Step 1: Partition the Graph
 
 ```bash
 # Contiguous
@@ -244,7 +160,7 @@ python3 tools/partition/partition.py outputs/graph.json \
 
 ---
 
-### Step 4: Run Algorithms
+### Step 2: Run Algorithms
 
 ```bash
 # Leader election
@@ -288,7 +204,7 @@ mpirun --oversubscribe -n 8 ./build/ngs_mpi ...
 * Each iteration:
 
   * Each rank computes its local minimum tentative distance
-  * Global minimum selected via `MPI_Allreduce`
+  * Global minimum (distance and node id) selected with one `MPI_Allreduce` using `MPI_MINLOC`
   * All ranks relax edges from that node
 * Continues until all nodes are settled
 
@@ -306,7 +222,7 @@ The runtime validates all inputs before execution:
   * Match MPI world size
 * CLI arguments:
 
-  * `--algo` must be `leader` or `dijkstra`
+  * `--algo` must be `leader` or `dijkstra-baseline` (`dijkstra` is an alias)
   * `--rounds` must be positive
   * `--source` must be within node range
 
@@ -361,7 +277,7 @@ Experiments include:
 
 ## Assumptions and Limitations
 
-* Graphs are treated as undirected (exporter adds reverse edges)
+* The included JSON graphs are undirected (every edge has a reverse edge)
 * Graph is assumed to be connected
 * Dijkstra requires non-negative edge weights
 * Full graph is replicated on all ranks (not memory optimized)
