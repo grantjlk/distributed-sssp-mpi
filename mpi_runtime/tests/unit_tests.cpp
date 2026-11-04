@@ -4,6 +4,7 @@
 #include "partition.h"
 #include "csr.h"
 #include "local_graph.h"
+#include "sssp_reference.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -146,6 +147,25 @@ TEST(LocalGraphTest, SlicesCoverWholeGraph) {
         EXPECT_EQ(total_edges, g.num_edges) << "ranks=" << ranks;
     }
     std::remove("local_slices.bin");
+}
+
+// ─── Reference SSSP Tests ───────────────────────────────────────────────────
+
+TEST(ReferenceSsspTest, ShortestPathsAndUnreachable) {
+    // 0 -> 1 (4), 0 -> 2 (1), 2 -> 1 (2), 1 -> 3 (5); node 4 is unreachable
+    CsrGraph g;
+    g.num_nodes = 5;
+    g.num_edges = 4;
+    g.offsets = {0, 2, 3, 4, 4, 4};
+    g.targets = {1, 2, 3, 1};
+    g.weights = {4, 1, 5, 2};
+
+    std::vector<int64_t> dist = sequential_sssp(g, 0);
+    EXPECT_EQ(dist[0], 0);
+    EXPECT_EQ(dist[1], 3);   // 0 -> 2 -> 1 beats the direct edge
+    EXPECT_EQ(dist[2], 1);
+    EXPECT_EQ(dist[3], 8);
+    EXPECT_EQ(dist[4], SSSP_INF);
 }
 
 int main(int argc, char* argv[]) {

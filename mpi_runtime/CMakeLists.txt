@@ -36,6 +36,7 @@ add_executable(unit_tests
     src/metrics.cpp
     src/csr.cpp
     src/local_graph.cpp
+    src/sssp_reference.cpp
 )
 target_link_libraries(unit_tests ${GTEST_LIBRARIES} pthread)
 
