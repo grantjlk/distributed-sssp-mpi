@@ -6,6 +6,7 @@
 #include "leader_election.h"
 #include "dijkstra.h"
 #include "metrics.h"
+#include "exchange.h"
 
 int rank, size;
 
@@ -70,6 +71,35 @@ TEST(DijkstraTest, AllNodesReachable) {
                 << "Node " << i << " is unreachable";
         }
     }
+}
+
+TEST(ExchangeTest, DeliversDifferentSizesToEachRank) {
+    // rank s sends (s + 1) copies of 100*s + r to each rank r
+    std::vector<std::vector<int>> outbox(size);
+    for (int r = 0; r < size; r++) {
+        outbox[r].assign(rank + 1, 100 * rank + r);
+    }
+
+    long long bytes = 0;
+    std::vector<int> inbox = exchange(outbox, MPI_COMM_WORLD, bytes);
+
+    // expect (s + 1) copies of 100*s + rank from each source s, in rank order
+    std::vector<int> expected;
+    for (int s = 0; s < size; s++) {
+        expected.insert(expected.end(), s + 1, 100 * s + rank);
+    }
+    EXPECT_EQ(inbox, expected);
+
+    // only the copies sent to other ranks count as traffic
+    EXPECT_EQ(bytes, (long long)(rank + 1) * (size - 1) * (long long)sizeof(int));
+}
+
+TEST(ExchangeTest, HandlesEmptyOutboxes) {
+    std::vector<std::vector<int>> outbox(size);
+    long long bytes = 0;
+    std::vector<int> inbox = exchange(outbox, MPI_COMM_WORLD, bytes);
+    EXPECT_TRUE(inbox.empty());
+    EXPECT_EQ(bytes, 0);
 }
 
 int main(int argc, char* argv[]) {
