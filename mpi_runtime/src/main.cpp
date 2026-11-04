@@ -9,6 +9,9 @@
 #include "dijkstra.h"
 #include "logger.h"
 #include "local_graph.h"
+#include "delta_stepping.h"
+#include "sssp_reference.h"
+#include "csr.h"
 #include "timer.h"
 #include <vector>
 
@@ -47,12 +50,99 @@ static void print_partition_stats(const LocalGraph& lg, double load_seconds) {
               << "========================\n\n";
 }
 
+// Gathers every rank's distances on rank 0 and compares them with a
+// sequential Dijkstra over the full graph. Returns true on all ranks if they match.
+static bool verify_distances(const LocalGraph& lg, const std::vector<int64_t>& dist,
+                             const std::string& graph_path, int32_t source) {
+    // blocks are contiguous and in rank order, so gathering by rank
+    // produces the distances in global node order
+    std::vector<int> counts(lg.num_ranks), displs(lg.num_ranks);
+    for (int r = 0; r < lg.num_ranks; r++) {
+        displs[r] = block_begin(lg.num_nodes, lg.num_ranks, r);
+        counts[r] = block_begin(lg.num_nodes, lg.num_ranks, r + 1) - displs[r];
+    }
+
+    std::vector<int64_t> all;
+    if (lg.rank == 0) all.resize(lg.num_nodes);
+    MPI_Gatherv(dist.data(), lg.num_owned(), MPI_INT64_T,
+                all.data(), counts.data(), displs.data(), MPI_INT64_T, 0, MPI_COMM_WORLD);
+
+    int ok = 1;
+    if (lg.rank == 0) {
+        std::vector<int64_t> expected = sequential_sssp(read_csr(graph_path), source);
+        long long mismatches = 0;
+        for (int64_t v = 0; v < lg.num_nodes; v++) {
+            if (all[v] != expected[v]) {
+                if (mismatches < 5) {
+                    LOG_ERROR("[verify] node " << v << ": got " << all[v]
+                              << ", expected " << expected[v]);
+                }
+                mismatches++;
+            }
+        }
+        ok = mismatches == 0;
+        if (ok) {
+            LOG_INFO("[verify] PASSED: all " << lg.num_nodes << " distances match sequential Dijkstra");
+        } else {
+            LOG_ERROR("[verify] FAILED: " << mismatches << " of " << lg.num_nodes << " distances differ");
+        }
+    }
+    MPI_Bcast(&ok, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    return ok == 1;
+}
+
+struct CsrOptions {
+    std::string graph_path;
+    std::string algo;
+    int source = 0;
+    int64_t delta = 0;   // 0 = use the average edge weight
+    bool verify = false;
+};
+
+static int run_delta_mode(const LocalGraph& lg, const CsrOptions& opt) {
+    if (opt.source < 0 || opt.source >= lg.num_nodes) {
+        if (lg.rank == 0) {
+            LOG_ERROR("Source node " << opt.source << " out of range [0, " << lg.num_nodes - 1 << "]");
+        }
+        return 1;
+    }
+
+    int64_t delta = opt.delta;
+    if (delta <= 0) {
+        long long local_sum = 0, global_sum = 0;
+        for (int32_t w : lg.weights) local_sum += w;
+        MPI_Allreduce(&local_sum, &global_sum, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+        delta = std::max<int64_t>(1, global_sum / std::max<int64_t>(lg.num_edges, 1));
+    }
+
+    DeltaStats stats;
+    std::vector<int64_t> dist = run_delta_stepping(lg, opt.source, delta, stats);
+
+    long long local_reached = 0, global_reached = 0;
+    for (int64_t d : dist) {
+        if (d < SSSP_INF) local_reached++;
+    }
+    MPI_Reduce(&local_reached, &global_reached, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if (lg.rank == 0) {
+        LOG_INFO("[delta] Source: " << opt.source);
+        LOG_INFO("[delta] Reachable nodes: " << global_reached << " / " << lg.num_nodes);
+        print_delta_stats(stats, delta);
+    }
+
+    if (opt.verify && !verify_distances(lg, dist, opt.graph_path, opt.source)) {
+        return 1;
+    }
+    return 0;
+}
+
 // Distributed mode: each rank loads only its block of a .csr graph
-static int run_csr_mode(const std::string& graph_path, const std::string& algo,
-                        int rank, int size) {
-    if (algo != "partition-stats") {
+static int run_csr_mode(const CsrOptions& opt, int rank, int size) {
+    const std::string& graph_path = opt.graph_path;
+    const std::string& algo = opt.algo;
+    if (algo != "partition-stats" && algo != "delta") {
         if (rank == 0) {
-            LOG_ERROR("Unknown algorithm '" << algo << "' for .csr graphs (available: partition-stats)");
+            LOG_ERROR("Unknown algorithm '" << algo << "' for .csr graphs (available: delta, partition-stats)");
         }
         return 1;
     }
@@ -78,6 +168,10 @@ static int run_csr_mode(const std::string& graph_path, const std::string& algo,
                  << lg.num_edges << " edges across " << size << " ranks");
     }
 
+    if (algo == "delta") {
+        return run_delta_mode(lg, opt);
+    }
+
     print_partition_stats(lg, load_seconds);
     return 0;
 }
@@ -94,6 +188,8 @@ int main(int argc, char* argv[]) {
     std::string graph_path, part_path, algo;
     int source = 0;
     int rounds = 200;
+    int64_t delta = 0;
+    bool verify = false;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -102,11 +198,19 @@ int main(int argc, char* argv[]) {
         else if (arg == "--algo" && i + 1 < argc)   algo       = argv[++i];
         else if (arg == "--source" && i + 1 < argc) source     = std::stoi(argv[++i]);
         else if (arg == "--rounds" && i + 1 < argc) rounds     = std::stoi(argv[++i]);
+        else if (arg == "--delta" && i + 1 < argc)  delta      = std::stoll(argv[++i]);
+        else if (arg == "--verify")                 verify     = true;
     }
 
     // .csr graphs are block-partitioned in-process and need no --part file
     if (ends_with(graph_path, ".csr") && !algo.empty()) {
-        int rc = run_csr_mode(graph_path, algo, rank, size);
+        CsrOptions opt;
+        opt.graph_path = graph_path;
+        opt.algo       = algo;
+        opt.source     = source;
+        opt.delta      = delta;
+        opt.verify     = verify;
+        int rc = run_csr_mode(opt, rank, size);
         MPI_Finalize();
         return rc;
     }
@@ -114,7 +218,7 @@ int main(int argc, char* argv[]) {
     if (graph_path.empty() || part_path.empty() || algo.empty()) {
         if (rank == 0) {
             LOG_ERROR("Usage: ngs_mpi --graph <path> --part <path> --algo <leader|dijkstra-baseline> [--source 0] [--rounds 200]");
-            LOG_ERROR("       ngs_mpi --graph <file.csr> --algo partition-stats");
+            LOG_ERROR("       ngs_mpi --graph <file.csr> --algo <delta|partition-stats> [--source 0] [--delta D] [--verify]");
         }
         MPI_Finalize();
         return 1;

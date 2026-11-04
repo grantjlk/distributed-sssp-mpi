@@ -19,6 +19,8 @@ add_executable(ngs_mpi
     src/metrics.cpp
     src/csr.cpp
     src/local_graph.cpp
+    src/delta_stepping.cpp
+    src/sssp_reference.cpp
 )
 target_link_libraries(ngs_mpi ${MPI_CXX_LIBRARIES})
 
