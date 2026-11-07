@@ -44,8 +44,8 @@ std::vector<int64_t> run_delta_stepping(const LocalGraph& lg, int32_t source,
     };
 
     // Relax the light (w <= delta) or heavy (w > delta) edges of `nodes`.
-    // Every target goes to its owner's outbox (including our own), one
-    // exchange delivers them, and each rank applies what it received.
+    // Targets we own are updated immediately; remote targets are batched
+    // into their owner's outbox, delivered by one exchange, and applied there.
     auto relax_edges = [&](const std::vector<int32_t>& nodes, bool light) {
         for (int32_t u : nodes) {
             int64_t du = dist[u];
@@ -53,12 +53,14 @@ std::vector<int64_t> run_delta_stepping(const LocalGraph& lg, int32_t source,
                 int32_t w = lg.weights[e];
                 if ((w <= delta) != light) continue;
                 int32_t v = lg.targets[e];
-                outbox[lg.owner(v)].push_back({du + w, v, 0});
                 stats.relaxations++;
+                if (lg.owns(v)) {
+                    relax_local(lg.to_local(v), du + w);
+                } else {
+                    outbox[lg.owner(v)].push_back({du + w, v, 0});
+                    stats.remote_requests++;
+                }
             }
-        }
-        for (int r = 0; r < lg.num_ranks; r++) {
-            if (r != lg.rank) stats.remote_requests += (long long)outbox[r].size();
         }
 
         std::vector<Relaxation> inbox = exchange(outbox, MPI_COMM_WORLD, stats.bytes_sent);
