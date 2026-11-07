@@ -19,7 +19,7 @@ for strategy in contiguous random; do
     echo "--- Dijkstra [$strategy] ---" | tee -a "$RESULTS"
     mpirun --oversubscribe -n 4 ./build/ngs_mpi --graph "$GRAPH" \
         --part outputs/part_exp1_${strategy}.json \
-        --algo dijkstra --source 0 2>&1 | tee -a "$RESULTS"
+        --algo dijkstra-baseline --source 0 2>&1 | tee -a "$RESULTS"
 done
 
 echo "" | tee -a "$RESULTS"
@@ -36,7 +36,7 @@ for ranks in 1 2 4 8; do
     echo "--- Dijkstra [ranks=$ranks] ---" | tee -a "$RESULTS"
     mpirun --oversubscribe -n $ranks ./build/ngs_mpi --graph "$GRAPH" \
         --part outputs/part_exp2_${ranks}.json \
-        --algo dijkstra --source 0 2>&1 | tee -a "$RESULTS"
+        --algo dijkstra-baseline --source 0 2>&1 | tee -a "$RESULTS"
 done
 
 echo "" | tee -a "$RESULTS"

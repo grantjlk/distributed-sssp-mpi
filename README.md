@@ -28,7 +28,7 @@ mpirun -n 4 ./build/ngs_mpi \
 mpirun -n 4 ./build/ngs_mpi \
   --graph outputs/graph.json \
   --part outputs/part.json \
-  --algo dijkstra --source 0
+  --algo dijkstra-baseline --source 0
 ```
 
 ### Second Graph
@@ -43,7 +43,7 @@ mpirun -n 4 ./build/ngs_mpi --graph outputs/graph2.json \
   --part outputs/part2.json --algo leader --rounds 200
 
 mpirun -n 4 ./build/ngs_mpi --graph outputs/graph2.json \
-  --part outputs/part2.json --algo dijkstra --source 0
+  --part outputs/part2.json --algo dijkstra-baseline --source 0
 ```
 
 ---
@@ -173,7 +173,7 @@ mpirun -n 4 ./build/ngs_mpi \
 mpirun -n 4 ./build/ngs_mpi \
   --graph outputs/graph.json \
   --part outputs/part.json \
-  --algo dijkstra --source 0
+  --algo dijkstra-baseline --source 0
 ```
 
 Oversubscribe if needed:
@@ -222,7 +222,7 @@ The runtime validates all inputs before execution:
   * Match MPI world size
 * CLI arguments:
 
-  * `--algo` must be `leader` or `dijkstra-baseline` (`dijkstra` is an alias)
+  * `--algo` must be `leader` or `dijkstra-baseline`
   * `--rounds` must be positive
   * `--source` must be within node range
 

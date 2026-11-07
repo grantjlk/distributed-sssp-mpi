@@ -224,9 +224,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // "dijkstra" is kept as an alias so older commands still work
-    if (algo == "dijkstra") algo = "dijkstra-baseline";
-
     if (algo != "leader" && algo != "dijkstra-baseline") {
         if (rank == 0) {
             LOG_ERROR("Unknown algorithm '" << algo << "'");
