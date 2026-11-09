@@ -20,7 +20,7 @@ FIGURES = os.path.join(HERE, "figures")
 
 # graph name -> (label, color); fixed so a graph keeps its color in every chart
 GRAPHS = {
-    "rmat20":    ("R-MAT, 1M nodes",           "#2a78d6"),
+    "rmat20":    ("R-MAT scale 20",            "#2a78d6"),
     "grid":      ("Grid 1000x1000",            "#eb6834"),
     "grid_shuf": ("Grid 1000x1000, shuffled",  "#1baf7a"),
 }
@@ -62,10 +62,9 @@ def style(ax, title, xlabel, ylabel):
     ax.tick_params(colors=MUTED)
 
 
-def label_end(ax, x, y, text, color, above=False):
-    offset, ha = ((0, 10), "center") if above else ((6, 0), "left")
-    ax.annotate(text, (x, y), xytext=offset, textcoords="offset points",
-                ha=ha, va="center", color=INK, fontsize=9)
+def label_end(ax, x, y, text, color):
+    ax.annotate(text, (x, y), xytext=(6, 0), textcoords="offset points",
+                va="center", color=INK, fontsize=9)
     ax.plot([x], [y], "o", color=color, markersize=6, markeredgecolor="white")
 
 
@@ -77,6 +76,9 @@ def plot_speedup():
         if not rows or not seq:
             continue
         ranks = sorted({int(r["ranks"]) for r in delta_rows(rows)})
+        deltas = {r["delta"] for r in delta_rows(rows)}
+        if len(deltas) != 1:
+            raise SystemExit(f"{name}.csv mixes deltas {sorted(deltas)}; use one per scaling file")
         meds, lo, hi = [], [], []
         for p in ranks:
             # speedup per source (same source for both), then the spread
@@ -84,7 +86,7 @@ def plot_speedup():
             meds.append(median(s)); lo.append(min(s)); hi.append(max(s))
         ax.fill_between(ranks, lo, hi, color=color, alpha=0.12, linewidth=0)
         ax.plot(ranks, meds, "-o", color=color, linewidth=2, markersize=6,
-                markeredgecolor="white", label=label)
+                markeredgecolor="white", label=f"{label} (delta = {deltas.pop()})")
         label_end(ax, ranks[-1], meds[-1], f"{meds[-1]:.2f}x", color)
     ax.axhline(1.0, color=MUTED, linestyle="--", linewidth=1)
     ax.annotate("sequential Dijkstra", (6, 1.0), xytext=(0, -12), textcoords="offset points",
@@ -113,9 +115,6 @@ def plot_delta_sweep():
                  for d in deltas]
             ax.plot(deltas, t, ls, marker="o", color=color, linewidth=2, markersize=6,
                     markeredgecolor="white", label=f"{p} rank{'s' if p > 1 else ''}")
-            if p == 6:
-                best = min(range(len(t)), key=t.__getitem__)
-                label_end(ax, deltas[best], t[best], f"best: {deltas[best]}", color, above=True)
         seq = median(seq_times(rows).values())
         ax.axhline(seq, color=MUTED, linestyle="--", linewidth=1)
         ax.annotate("sequential", (deltas[0], seq), xytext=(0, 4),
