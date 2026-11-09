@@ -12,11 +12,6 @@ include_directories(include ${MPI_CXX_INCLUDE_PATH} ${GTEST_INCLUDE_DIRS})
 # main executable
 add_executable(ngs_mpi
     src/main.cpp
-    src/graph.cpp
-    src/partition.cpp
-    src/leader_election.cpp
-    src/dijkstra.cpp
-    src/metrics.cpp
     src/csr.cpp
     src/local_graph.cpp
     src/delta_stepping.cpp
@@ -33,9 +28,6 @@ add_executable(gen_graph
 # unit tests (no MPI)
 add_executable(unit_tests
     tests/unit_tests.cpp
-    src/graph.cpp
-    src/partition.cpp
-    src/metrics.cpp
     src/csr.cpp
     src/local_graph.cpp
     src/sssp_reference.cpp
@@ -45,11 +37,6 @@ target_link_libraries(unit_tests ${GTEST_LIBRARIES} pthread)
 # mpi tests
 add_executable(mpi_tests
     tests/mpi_tests.cpp
-    src/graph.cpp
-    src/partition.cpp
-    src/leader_election.cpp
-    src/dijkstra.cpp
-    src/metrics.cpp
     src/csr.cpp
     src/local_graph.cpp
     src/delta_stepping.cpp
