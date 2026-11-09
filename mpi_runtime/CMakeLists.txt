@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 find_package(MPI REQUIRED)
+# the deprecated MPI C++ bindings are unused and only add header warnings
+add_compile_definitions(OMPI_SKIP_MPICXX)
 find_package(GTest REQUIRED)
 
 include_directories(include ${MPI_CXX_INCLUDE_PATH} ${GTEST_INCLUDE_DIRS})

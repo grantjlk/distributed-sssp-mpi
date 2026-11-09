@@ -98,7 +98,9 @@ TEST(DeltaSteppingTest, MatchesSequentialDijkstra) {
             EXPECT_EQ(all, expected) << "source=" << source << " delta=" << delta;
 
             // with several ranks, updates must actually cross rank boundaries
-            if (size > 1) EXPECT_GT(stats.remote_requests, 0);
+            if (size > 1) {
+                EXPECT_GT(stats.remote_requests, 0);
+            }
         }
     }
 
