@@ -138,15 +138,14 @@ RUNS=5 ./experiments/bench.sh graphs/grid.csr sweep_grid "10 25 50 100 200 400" 
 python3 experiments/plot.py
 ```
 
-Tests (run from `mpi_runtime/`, since they use relative paths):
+Tests:
 
 ```bash
-cd mpi_runtime
-../build/unit_tests
-mpirun -n 4 ../build/mpi_tests
+./build/unit_tests
+mpirun -n 4 ./build/mpi_tests
 ```
 
-There are 19 tests: 12 unit tests and 7 MPI tests. They cover the CSR round
+There are 8 tests: 5 unit tests and 3 MPI tests. They cover the CSR round
 trip, the block partition, the exchange, and delta-stepping vs sequential
 Dijkstra on a random graph for several sources and Δ values (Δ = 1, a middle
 value, and Δ large enough to behave like Bellman-Ford). The MPI tests pass at
@@ -174,18 +173,9 @@ any rank count.
 This started as a course project (Jan–Apr 2026). That version (v1) replicated
 the whole graph on every rank and ran a Dijkstra in which each step used a
 global `MPI_Allreduce`, so ranks did redundant work and it did not scale. It
-was tested on a 501-node graph with single-run timings. The v1 code is still
-here, frozen and unchanged in behaviour:
-
-- `--algo dijkstra-baseline` and `--algo leader` (FloodMax leader election) on
-  JSON graphs partitioned by `tools/partition/partition.py`
-- `outputs/graph.json`, `experiments/run_experiments.sh`,
-  `experiments/results.txt` and `REPORT.md` describe v1
-
-```bash
-python3 tools/partition/partition.py outputs/graph.json --ranks 4 --out outputs/part.json
-mpirun -n 4 ./build/ngs_mpi --graph outputs/graph.json --part outputs/part.json --algo dijkstra-baseline --source 0
-```
+was tested on a 501-node graph with single-run timings. That version, which
+also included FloodMax leader election and a report, is preserved at the
+[`v1-course-project`](../../tree/v1-course-project) tag.
 
 The current version (v2) replaces it with the distributed design above:
 partitioned CSR input, delta-stepping with batched `Alltoallv` exchange,
@@ -208,11 +198,8 @@ mpi_runtime/
     delta_stepping.cpp     distributed delta-stepping
     sssp_reference.cpp     sequential Dijkstra (baseline + verification)
     main.cpp               CLI
-    dijkstra.cpp, leader_election.cpp, graph.cpp, partition.cpp   (v1)
   tests/                   unit_tests.cpp, mpi_tests.cpp
 experiments/
   bench.sh, plot.py        benchmark runner and charts
   results/, figures/       CSV results and PNG charts
-tools/partition/           v1 JSON partitioner
-outputs/                   v1 example graphs
 ```
