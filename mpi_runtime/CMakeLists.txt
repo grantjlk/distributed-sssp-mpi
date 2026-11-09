@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ngs_mpi)
+project(sssp_mpi)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -10,14 +10,14 @@ find_package(GTest REQUIRED)
 include_directories(include ${MPI_CXX_INCLUDE_PATH} ${GTEST_INCLUDE_DIRS})
 
 # main executable
-add_executable(ngs_mpi
+add_executable(sssp_mpi
     src/main.cpp
     src/csr.cpp
     src/local_graph.cpp
     src/delta_stepping.cpp
     src/sssp_reference.cpp
 )
-target_link_libraries(ngs_mpi ${MPI_CXX_LIBRARIES})
+target_link_libraries(sssp_mpi ${MPI_CXX_LIBRARIES})
 
 # synthetic graph generator (no MPI)
 add_executable(gen_graph

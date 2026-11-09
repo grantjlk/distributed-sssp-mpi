@@ -116,14 +116,14 @@ Run:
 
 ```bash
 # delta-stepping on 6 ranks, checked against sequential Dijkstra
-mpirun -n 6 --bind-to core ./build/ngs_mpi --graph graphs/grid.csr \
+mpirun -n 6 --bind-to core ./build/sssp_mpi --graph graphs/grid.csr \
   --algo delta --delta 200 --source 0 --verify
 
 # sequential baseline (1 rank)
-mpirun -n 1 ./build/ngs_mpi --graph graphs/grid.csr --algo seq --source 0
+mpirun -n 1 ./build/sssp_mpi --graph graphs/grid.csr --algo seq --source 0
 
 # how the block partition splits the graph (edge cut, balance)
-mpirun -n 6 ./build/ngs_mpi --graph graphs/rmat20.csr --algo partition-stats
+mpirun -n 6 ./build/sssp_mpi --graph graphs/rmat20.csr --algo partition-stats
 ```
 
 Benchmarks and plots (results go to `experiments/results/`, charts to

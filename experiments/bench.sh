@@ -18,7 +18,7 @@ if [ -z "$RANKS" ]; then
     exit 1
 fi
 
-BIN=./build/ngs_mpi
+BIN=./build/sssp_mpi
 OUT=experiments/results/$NAME.csv
 mkdir -p experiments/results
 [ -f "$OUT" ] || echo "graph,algo,ranks,delta,source,seconds,reached,buckets,phases,relaxations,remote_requests,bytes_sent" > "$OUT"

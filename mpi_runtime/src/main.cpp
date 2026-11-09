@@ -267,7 +267,7 @@ int main(int argc, char* argv[]) {
         if (rank == 0) LOG_ERROR("Invalid or unknown argument: " << bad_arg);
     } else if (opt.graph_path.empty() || opt.algo.empty()) {
         if (rank == 0) {
-            LOG_ERROR("Usage: ngs_mpi --graph <file.csr> --algo <delta|seq|partition-stats> "
+            LOG_ERROR("Usage: sssp_mpi --graph <file.csr> --algo <delta|seq|partition-stats> "
                       "[--source 0] [--delta D] [--verify]");
         }
     } else {
