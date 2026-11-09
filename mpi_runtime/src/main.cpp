@@ -16,6 +16,14 @@
 #include <vector>
 #include <iomanip>
 
+// whole-string integer parse: "12" is fine, "12x" or "" throws
+static long long parse_int(const std::string& s) {
+    size_t used = 0;
+    long long v = std::stoll(s, &used);
+    if (used != s.size()) throw std::invalid_argument("trailing characters");
+    return v;
+}
+
 static bool ends_with(const std::string& s, const std::string& suffix) {
     return s.size() >= suffix.size() &&
            s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
@@ -233,15 +241,40 @@ int main(int argc, char* argv[]) {
     int64_t delta = 0;
     bool verify = false;
 
-    for (int i = 1; i < argc; i++) {
+    // unknown flags, missing values and non-numbers are errors, so a typo
+    // can't silently fall back to a default (every rank parses the same
+    // arguments, so all ranks exit together)
+    std::string bad_arg;
+    for (int i = 1; i < argc && bad_arg.empty(); i++) {
         std::string arg = argv[i];
-        if (arg == "--graph" && i + 1 < argc)       graph_path = argv[++i];
-        else if (arg == "--part" && i + 1 < argc)   part_path  = argv[++i];
-        else if (arg == "--algo" && i + 1 < argc)   algo       = argv[++i];
-        else if (arg == "--source" && i + 1 < argc) source     = std::stoi(argv[++i]);
-        else if (arg == "--rounds" && i + 1 < argc) rounds     = std::stoi(argv[++i]);
-        else if (arg == "--delta" && i + 1 < argc)  delta      = std::stoll(argv[++i]);
-        else if (arg == "--verify")                 verify     = true;
+        if (arg == "--verify") {
+            verify = true;
+            continue;
+        }
+        if (i + 1 >= argc) {
+            bad_arg = arg;
+            break;
+        }
+        std::string value = argv[++i];
+        try {
+            if (arg == "--graph")       graph_path = value;
+            else if (arg == "--part")   part_path  = value;
+            else if (arg == "--algo")   algo       = value;
+            else if (arg == "--source") source     = (int)parse_int(value);
+            else if (arg == "--rounds") rounds     = (int)parse_int(value);
+            else if (arg == "--delta")  delta      = parse_int(value);
+            else                        bad_arg    = arg;
+        } catch (const std::exception&) {
+            bad_arg = arg + " " + value;
+        }
+    }
+
+    if (!bad_arg.empty()) {
+        if (rank == 0) {
+            LOG_ERROR("Invalid or unknown argument: " << bad_arg);
+        }
+        MPI_Finalize();
+        return 1;
     }
 
     // .csr graphs are block-partitioned in-process and need no --part file
