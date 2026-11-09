@@ -3,12 +3,12 @@
 # one CSV row per run to experiments/results/<name>.csv.
 #
 #   ./experiments/bench.sh <graph.csr> <name> "<deltas>" "<ranks>"
-#   ./experiments/bench.sh g.csr rmat20 "20" "1 2 4 6"          # scaling
-#   ./experiments/bench.sh g.csr rmat20 "5 10 20 40 80" "6"     # delta sweep
+#   ./experiments/bench.sh rmat20.csr rmat20 "1" "1 2 4 6"                    # scaling
+#   RUNS=5 ./experiments/bench.sh rmat20.csr sweep_rmat20 "1 2 5 10 20" "1 6"  # delta sweep
 #
 # RUNS (default 10) sources are drawn from a fixed seed, keeping only ones
 # that reach at least half the graph, so every config runs the same sources.
-set -e
+set -eo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 GRAPH=$1; NAME=$2; DELTAS=$3; RANKS=$4
@@ -33,7 +33,10 @@ parse() {
         /Relaxations:/    { x = $2 }
         /Remote requests:/{ q = $2 }
         /Bytes sent:/     { y = $2 }
-        END { printf "%s,%s,%s,%s,%s,%s,%s,%s\n", secs, reached, b, p, x, q, y, n }'
+        END {
+            if (secs == "") { print "no runtime in output" > "/dev/stderr"; exit 1 }
+            printf "%s,%s,%s,%s,%s,%s,%s,%s\n", secs, reached, b, p, x, q, y, n
+        }'
 }
 
 # pick sources and time the sequential baseline at the same time
