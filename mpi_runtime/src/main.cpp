@@ -77,8 +77,18 @@ static bool verify_distances(const LocalGraph& lg, const std::vector<int64_t>& d
                 all.data(), counts.data(), displs.data(), MPI_INT64_T, 0, MPI_COMM_WORLD);
 
     int ok = 1;
+    std::vector<int64_t> expected;
     if (lg.rank == 0) {
-        std::vector<int64_t> expected = sequential_sssp(read_csr(graph_path), source);
+        // a failure here must still reach the Bcast below, or the other
+        // ranks would wait there forever
+        try {
+            expected = sequential_sssp(read_csr(graph_path), source);
+        } catch (const std::exception& ex) {
+            LOG_ERROR("[verify] could not build reference: " << ex.what());
+            ok = 0;
+        }
+    }
+    if (lg.rank == 0 && ok) {
         long long mismatches = 0;
         for (int64_t v = 0; v < lg.num_nodes; v++) {
             if (all[v] != expected[v]) {
@@ -147,9 +157,11 @@ static int run_delta_mode(const LocalGraph& lg, const CsrOptions& opt) {
 
 // Sequential baseline: one process, full graph, heap Dijkstra.
 // Speedups are reported against this, not against delta-stepping on 1 rank.
-static int run_seq_mode(const CsrOptions& opt, int size) {
+static int run_seq_mode(const CsrOptions& opt, int rank, int size) {
     if (size != 1) {
-        LOG_ERROR("--algo seq is the single-process baseline; run it with 1 rank");
+        if (rank == 0) {
+            LOG_ERROR("--algo seq is the single-process baseline; run it with 1 rank");
+        }
         return 1;
     }
 
@@ -188,7 +200,7 @@ static int run_csr_mode(const CsrOptions& opt, int rank, int size) {
     const std::string& graph_path = opt.graph_path;
     const std::string& algo = opt.algo;
     if (algo == "seq") {
-        return run_seq_mode(opt, size);
+        return run_seq_mode(opt, rank, size);
     }
     if (algo != "partition-stats" && algo != "delta") {
         if (rank == 0) {
