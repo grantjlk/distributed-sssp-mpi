@@ -50,5 +50,9 @@ add_executable(mpi_tests
     src/leader_election.cpp
     src/dijkstra.cpp
     src/metrics.cpp
+    src/csr.cpp
+    src/local_graph.cpp
+    src/delta_stepping.cpp
+    src/sssp_reference.cpp
 )
 target_link_libraries(mpi_tests ${MPI_CXX_LIBRARIES} ${GTEST_LIBRARIES} pthread)

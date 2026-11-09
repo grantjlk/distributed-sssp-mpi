@@ -255,7 +255,8 @@ cd mpi_runtime && ../build/unit_tests
 cd mpi_runtime && mpirun -n 4 ../build/mpi_tests
 ```
 
-All 11 tests should pass (7 unit, 4 MPI).
+19 tests: 12 unit, 7 MPI. The MPI tests pass at any rank count. The 4 v1 tests
+use a 4-rank partition file and are skipped at other rank counts.
 
 
 ---
