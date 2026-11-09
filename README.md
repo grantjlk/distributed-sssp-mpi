@@ -17,22 +17,22 @@ graph loading is excluded from both.
 
 | Graph | Nodes / directed edges | Sequential Dijkstra | Delta-stepping, 6 ranks | Speedup | Data sent between ranks |
 |---|---|---|---|---|---|
-| R-MAT scale 20 | 1,048,576 / 31.4M (646K reachable) | 0.85 s | 0.57 s | **1.48x** | 102 MB |
-| Grid 1000x1000, shuffled | 1,000,000 / 4.0M | 0.46 s | 0.19 s | **2.39x** | 66 MB |
-| Grid 1000x1000 | 1,000,000 / 4.0M | 0.185 s | 0.068 s | **2.69x** | 0.2 MB |
+| R-MAT scale 20 | 1,048,576 / 31.4M (646K reachable) | 0.85 s | 0.57 s | **1.49x** | 102 MB |
+| Grid 1000x1000, shuffled | 1,000,000 / 4.0M | 0.46 s | 0.19 s | **2.38x** | 66 MB |
+| Grid 1000x1000 | 1,000,000 / 4.0M | 0.185 s | 0.068 s | **2.73x** | 0.2 MB |
 
 ![Speedup over sequential Dijkstra](experiments/figures/speedup.png)
 
 **Where the speedup comes from.** Delta-stepping on a single rank is already
 faster than the heap-based Dijkstra, because bucket operations are cheaper than
 heap operations. The table splits the total into that algorithmic part and the
-part from adding cores:
+part from adding cores (all ratios of median times, so the columns multiply):
 
 | Graph | 1 rank vs sequential | 1 → 6 ranks | Total |
 |---|---|---|---|
-| R-MAT scale 20 | 1.05x | 1.41x | 1.48x |
-| Grid, shuffled | 1.28x | 1.92x | 2.39x |
-| Grid | 1.43x | 1.84x | 2.69x |
+| R-MAT scale 20 | 1.06x | 1.41x | 1.49x |
+| Grid, shuffled | 1.24x | 1.91x | 2.38x |
+| Grid | 1.48x | 1.84x | 2.73x |
 
 **Communication is what limits scaling.** Nodes are split into contiguous blocks
 by id. In the unshuffled grid, each node's neighbours have nearby ids and usually
@@ -58,7 +58,7 @@ implementations such as GAP do):
 - **R-MAT** is a small-world graph: its shortest paths are only a few hops long,
   so even Δ = 1 needs just ~190 phases, and each phase contains thousands of
   nodes to process in parallel. Larger Δ only adds wasted work: 73M relaxations
-  at Δ = 160 vs 31.4M at Δ = 1. Δ from 1 to 5 performs the same within noise;
+  at Δ = 160 vs 31.4M at Δ = 1 (6 ranks). Δ from 1 to 5 performs the same within noise;
   Δ = 1 was used. With integer weights, Δ = 1 is effectively a distributed
   version of Dial's bucket-queue algorithm.
 - **The grid** has paths about 1000 hops long. Δ = 10 needs about 9,800
@@ -126,8 +126,12 @@ mpirun -n 1 ./build/sssp_mpi --graph graphs/grid.csr --algo seq --source 0
 mpirun -n 6 ./build/sssp_mpi --graph graphs/rmat20.csr --algo partition-stats
 ```
 
+Without `--delta`, Δ defaults to the average edge weight; the Δ values used
+come from the sweep below.
+
 Benchmarks and plots (results go to `experiments/results/`, charts to
-`experiments/figures/`):
+`experiments/figures/`). `bench.sh` appends to an existing CSV, so delete the
+old one first to get a fresh result set:
 
 ```bash
 ./experiments/bench.sh graphs/rmat20.csr rmat20 "1" "1 2 4 6"
@@ -182,9 +186,7 @@ partitioned CSR input, delta-stepping with batched `Alltoallv` exchange,
 large generated graphs, verification against a sequential reference, and
 repeated, median-based measurements.
 
-## AI usage
-
-<!-- TODO(grantjlk): write this section — which parts you wrote, which parts were written with AI, and how you reviewed them. -->
+<!-- AI usage section goes here. TODO(grantjlk): write this section — which parts you wrote, which parts were written with AI, and how you reviewed them. -->
 
 ## Repository layout
 

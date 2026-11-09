@@ -81,9 +81,12 @@ def plot_speedup():
             raise SystemExit(f"{name}.csv mixes deltas {sorted(deltas)}; use one per scaling file")
         meds, lo, hi = [], [], []
         for p in ranks:
-            # speedup per source (same source for both), then the spread
-            s = [seq[r["source"]] / float(r["seconds"]) for r in delta_rows(rows, ranks=p)]
-            meds.append(median(s)); lo.append(min(s)); hi.append(max(s))
+            # line: median sequential time / median delta time;
+            # band: spread of per-source speedups (same source for both)
+            runs = delta_rows(rows, ranks=p)
+            s = [seq[r["source"]] / float(r["seconds"]) for r in runs]
+            meds.append(median(seq.values()) / median(float(r["seconds"]) for r in runs))
+            lo.append(min(s)); hi.append(max(s))
         ax.fill_between(ranks, lo, hi, color=color, alpha=0.12, linewidth=0)
         ax.plot(ranks, meds, "-o", color=color, linewidth=2, markersize=6,
                 markeredgecolor="white", label=f"{label} (delta = {deltas.pop()})")
@@ -93,7 +96,7 @@ def plot_speedup():
                 ha="right", color=MUTED, fontsize=9)
     ax.set_xticks(ranks)
     style(ax, "Delta-stepping speedup over sequential Dijkstra",
-          "MPI ranks (one per core)", "speedup (median, band = min-max)")
+          "MPI ranks (one per core)", "speedup (median times, band = per-source range)")
     ax.set_ylim(bottom=0)
     ax.legend(frameon=False, loc="upper left")
     save(fig, "speedup.png")
