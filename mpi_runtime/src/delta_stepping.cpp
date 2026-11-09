@@ -33,6 +33,10 @@ std::vector<int64_t> run_delta_stepping(const LocalGraph& lg, int32_t source,
     std::vector<char> in_frontier(n_local, 0);
     std::vector<char> in_settled(n_local, 0);
 
+    // sent_slot[v] = index of v's pending request in its owner's outbox, or -1.
+    // Indexed by global id (4 bytes per node in the whole graph).
+    std::vector<int32_t> sent_slot(lg.num_nodes, -1);
+
     // lower dist[local] if d is better and file it in the matching bucket
     auto relax_local = [&](int32_t local, int64_t d) {
         if (d < dist[local]) {
@@ -56,11 +60,27 @@ std::vector<int64_t> run_delta_stepping(const LocalGraph& lg, int32_t source,
                 stats.relaxations++;
                 if (lg.owns(v)) {
                     relax_local(lg.to_local(v), du + w);
-                } else {
-                    outbox[lg.owner(v)].push_back({du + w, v, 0});
-                    stats.remote_requests++;
+                    continue;
+                }
+
+                // send at most one request per remote node per phase,
+                // keeping only the smallest candidate distance
+                auto& box = outbox[lg.owner(v)];
+                int32_t& slot = sent_slot[v];
+                if (slot < 0) {
+                    slot = (int32_t)box.size();
+                    box.push_back({du + w, v, 0});
+                } else if (du + w < box[slot].dist) {
+                    box[slot].dist = du + w;
                 }
             }
+        }
+
+        // reset only the slots used this phase, so the cost tracks
+        // requests sent rather than graph size
+        for (const auto& box : outbox) {
+            stats.remote_requests += (long long)box.size();
+            for (const Relaxation& req : box) sent_slot[req.node] = -1;
         }
 
         std::vector<Relaxation> inbox = exchange(outbox, MPI_COMM_WORLD, stats.bytes_sent);
