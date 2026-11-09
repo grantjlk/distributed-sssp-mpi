@@ -14,6 +14,7 @@
 #include "csr.h"
 #include "timer.h"
 #include <vector>
+#include <iomanip>
 
 static bool ends_with(const std::string& s, const std::string& suffix) {
     return s.size() >= suffix.size() &&
@@ -136,13 +137,54 @@ static int run_delta_mode(const LocalGraph& lg, const CsrOptions& opt) {
     return 0;
 }
 
+// Sequential baseline: one process, full graph, heap Dijkstra.
+// Speedups are reported against this, not against delta-stepping on 1 rank.
+static int run_seq_mode(const CsrOptions& opt, int size) {
+    if (size != 1) {
+        LOG_ERROR("--algo seq is the single-process baseline; run it with 1 rank");
+        return 1;
+    }
+
+    CsrGraph g;
+    try {
+        g = read_csr(opt.graph_path);
+    } catch (const std::exception& ex) {
+        LOG_ERROR("Error loading graph: " << ex.what());
+        return 1;
+    }
+    if (opt.source < 0 || opt.source >= g.num_nodes) {
+        LOG_ERROR("Source node " << opt.source << " out of range [0, " << g.num_nodes - 1 << "]");
+        return 1;
+    }
+
+    double start = MPI_Wtime();
+    std::vector<int64_t> dist = sequential_sssp(g, opt.source);
+    double runtime = MPI_Wtime() - start;
+
+    long long reached = 0;
+    for (int64_t d : dist) {
+        if (d < SSSP_INF) reached++;
+    }
+
+    LOG_INFO("[seq] Source: " << opt.source);
+    LOG_INFO("[seq] Reachable nodes: " << reached << " / " << g.num_nodes);
+    std::cout << "\n=== Metrics: Sequential Dijkstra ===\n"
+              << std::fixed << std::setprecision(4)
+              << "  Runtime:          " << runtime << " seconds\n"
+              << "========================\n\n";
+    return 0;
+}
+
 // Distributed mode: each rank loads only its block of a .csr graph
 static int run_csr_mode(const CsrOptions& opt, int rank, int size) {
     const std::string& graph_path = opt.graph_path;
     const std::string& algo = opt.algo;
+    if (algo == "seq") {
+        return run_seq_mode(opt, size);
+    }
     if (algo != "partition-stats" && algo != "delta") {
         if (rank == 0) {
-            LOG_ERROR("Unknown algorithm '" << algo << "' for .csr graphs (available: delta, partition-stats)");
+            LOG_ERROR("Unknown algorithm '" << algo << "' for .csr graphs (available: delta, seq, partition-stats)");
         }
         return 1;
     }
@@ -218,7 +260,7 @@ int main(int argc, char* argv[]) {
     if (graph_path.empty() || part_path.empty() || algo.empty()) {
         if (rank == 0) {
             LOG_ERROR("Usage: ngs_mpi --graph <path> --part <path> --algo <leader|dijkstra-baseline> [--source 0] [--rounds 200]");
-            LOG_ERROR("       ngs_mpi --graph <file.csr> --algo <delta|partition-stats> [--source 0] [--delta D] [--verify]");
+            LOG_ERROR("       ngs_mpi --graph <file.csr> --algo <delta|seq|partition-stats> [--source 0] [--delta D] [--verify]");
         }
         MPI_Finalize();
         return 1;
