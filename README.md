@@ -186,7 +186,21 @@ partitioned CSR input, delta-stepping with batched `Alltoallv` exchange,
 large generated graphs, verification against a sequential reference, and
 repeated, median-based measurements.
 
-<!-- AI usage section goes here. TODO(grantjlk): write this section — which parts you wrote, which parts were written with AI, and how you reviewed them. -->
+## How AI Was Used
+
+The original course version (v1) was my own work. For the v2 rewrite I used Claude as a collaborator, and this is how the work split.
+
+**Mine**
+- The design decisions: switching to delta-stepping, block partitioning by node id, what to measure (median of 10 sources, speedup split into algorithmic and parallel parts), and what counted as done
+- The distributed delta-stepping in `delta_stepping.cpp` and the `Alltoallv` exchange in `exchange.h`
+- Running the benchmarks and the Δ sweeps, and the analysis of why communication limits scaling
+- Checking that the reported numbers are real and that the tests can actually fail
+
+**Written by AI from my direction**
+- Infrastructure: the CSR file format, graph generator, per-rank loader, CLI parsing, and CMake
+- The benchmark and plotting scripts
+- Test scaffolding and the sequential Dijkstra reference used by `--verify`
+- First drafts of this README, which I edited and checked against the results
 
 ## Repository layout
 
