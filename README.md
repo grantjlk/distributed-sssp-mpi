@@ -36,16 +36,24 @@ part from adding cores (all ratios of median times, so the columns multiply):
 | Grid, shuffled | 1.24x | 1.91x | 2.38x |
 | Grid | 1.48x | 1.84x | 2.73x |
 
-### Communication is what limits scaling
+### Node-id locality: communication and cache
 
 Nodes are split into contiguous blocks
 by id. In the unshuffled grid, each node's neighbours have nearby ids and usually
 live on the same rank, so only 0.25% of edges cross ranks. That makes the grid a
 best case. The shuffled grid is the same graph with random ids: 83% of edges
 cross ranks (5/6, as expected for 6 ranks), and it sends 66 MB per run instead of
-0.2 MB. R-MAT ids are also random, and its skewed degrees produce the most
-traffic. Shuffling also makes sequential Dijkstra 2.5x slower, because
-neighbouring nodes end up far apart in memory and miss the cache.
+0.2 MB, about 330x more. R-MAT ids are also random, and its skewed degrees
+produce the most traffic.
+
+The shuffled grid runs 2.8x slower at 6 ranks, but most of that is not from
+sending more data. On 1 rank, where nothing is sent, it is already 3.0x slower
+(0.370 s vs 0.125 s), because neighbouring nodes end up far apart in memory and
+miss the cache. Sending data is cheap here because all ranks share one
+machine's memory. Over a real network it would cost much more.
+
+Both grids speed up by less than 2x from 1 to 6 ranks. The cause was not
+measured.
 
 ![Bytes sent between ranks](experiments/figures/communication.png)
 
@@ -197,7 +205,7 @@ The original course version (v1) was my own work. For the v2 rewrite I used Clau
 **Mine**
 - The design decisions: switching to delta-stepping, block partitioning by node id, what to measure (median of 10 sources, speedup split into algorithmic and parallel parts), and what counted as done
 - The distributed delta-stepping in `delta_stepping.cpp` and the `Alltoallv` exchange in `exchange.h`
-- Running the benchmarks and the Δ sweeps, and the analysis of why communication limits scaling
+- Running the benchmarks and the Δ sweeps, and the analysis of how node-id locality affects communication and runtime
 - Checking that the reported numbers are real and that the tests can actually fail
 
 **Written by AI from my direction**
