@@ -1,7 +1,7 @@
 # Distributed Shortest Paths with MPI
 
 Distributed single-source shortest paths (SSSP) in C++17 and OpenMPI using
-**delta-stepping** (Meyer & Sanders). Each MPI rank loads and owns only its
+delta-stepping (Meyer & Sanders). Each MPI rank loads and owns only its
 block of a graph stored in binary CSR format. Updates for nodes owned by other
 ranks are batched and exchanged once per phase with `MPI_Alltoallv`. Every run
 can be checked against a sequential Dijkstra with `--verify`.
@@ -17,13 +17,15 @@ graph loading is excluded from both.
 
 | Graph | Nodes / directed edges | Sequential Dijkstra | Delta-stepping, 6 ranks | Speedup | Data sent between ranks |
 |---|---|---|---|---|---|
-| R-MAT scale 20 | 1,048,576 / 31.4M (646K reachable) | 0.85 s | 0.57 s | **1.49x** | 102 MB |
-| Grid 1000x1000, shuffled | 1,000,000 / 4.0M | 0.46 s | 0.19 s | **2.38x** | 66 MB |
-| Grid 1000x1000 | 1,000,000 / 4.0M | 0.185 s | 0.068 s | **2.73x** | 0.2 MB |
+| R-MAT scale 20 | 1,048,576 / 31.4M (646K reachable) | 0.85 s | 0.57 s | 1.49x | 102 MB |
+| Grid 1000x1000, shuffled | 1,000,000 / 4.0M | 0.46 s | 0.19 s | 2.38x | 66 MB |
+| Grid 1000x1000 | 1,000,000 / 4.0M | 0.185 s | 0.068 s | 2.73x | 0.2 MB |
 
 ![Speedup over sequential Dijkstra](experiments/figures/speedup.png)
 
-**Where the speedup comes from.** Delta-stepping on a single rank is already
+### Where the speedup comes from
+
+Delta-stepping on a single rank is already
 faster than the heap-based Dijkstra, because bucket operations are cheaper than
 heap operations. The table splits the total into that algorithmic part and the
 part from adding cores (all ratios of median times, so the columns multiply):
@@ -34,7 +36,9 @@ part from adding cores (all ratios of median times, so the columns multiply):
 | Grid, shuffled | 1.24x | 1.91x | 2.38x |
 | Grid | 1.48x | 1.84x | 2.73x |
 
-**Communication is what limits scaling.** Nodes are split into contiguous blocks
+### Communication is what limits scaling
+
+Nodes are split into contiguous blocks
 by id. In the unshuffled grid, each node's neighbours have nearby ids and usually
 live on the same rank, so only 0.25% of edges cross ranks. That makes the grid a
 best case. The shuffled grid is the same graph with random ids: 83% of edges
@@ -55,13 +59,13 @@ implementations such as GAP do):
 
 ![Runtime vs delta](experiments/figures/delta_sweep.png)
 
-- **R-MAT** is a small-world graph: its shortest paths are only a few hops long,
+- R-MAT is a small-world graph: its shortest paths are only a few hops long,
   so even Δ = 1 needs just ~190 phases, and each phase contains thousands of
   nodes to process in parallel. Larger Δ only adds wasted work: 73M relaxations
   at Δ = 160 vs 31.4M at Δ = 1 (6 ranks). Δ from 1 to 5 performs the same within noise;
   Δ = 1 was used. With integer weights, Δ = 1 is effectively a distributed
   version of Dial's bucket-queue algorithm.
-- **The grid** has paths about 1000 hops long. Δ = 10 needs about 9,800
+- The grid has paths about 1000 hops long. Δ = 10 needs about 9,800
   phases, each ending in a global synchronisation, so a wider Δ = 200 is faster
   despite the extra relaxations.
 
@@ -157,18 +161,18 @@ any rank count.
 
 ## Limitations
 
-- **One machine.** All ranks share one CPU and memory system, so the
+- Everything ran on one machine. All ranks share one CPU and memory system, so the
   "communication" here is shared-memory MPI, not a network. The code runs
   unchanged across machines (`mpirun --hostfile`), but that has not been
   measured.
-- **Only 6 cores.** Scaling past 6 ranks was not measured.
-- **Block partitioning only.** Graphs with random ids (R-MAT, the shuffled grid)
+- The laptop has only 6 cores, so scaling past 6 ranks was not measured.
+- Only block partitioning is implemented. Graphs with random ids (R-MAT, the shuffled grid)
   get the worst-case edge cut. A real partitioner such as METIS would reduce
   traffic.
-- **Memory is not fully distributed.** Each rank keeps a 4-byte deduplication
+- Memory is not fully distributed: each rank keeps a 4-byte deduplication
   slot per node of the *whole* graph (`sent_slot`, 4 MB at 1M nodes). Edges and
   distances are fully distributed.
-- **Δ is tuned per graph by hand** using the sweep, not chosen automatically.
+- Δ is tuned per graph by hand using the sweep, not chosen automatically.
 - Timings are wall-clock on a laptop. Runs on battery were noticeably slower
   and noisier, so all reported numbers were taken on AC power.
 
